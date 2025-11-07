@@ -1,0 +1,6 @@
+# compile vhdl design source files
+vhdl xil_defaultlib  \
+"../../../../../lab3files/extend_unit_tb.vhdl" \
+
+# Do not sort compile order
+nosort

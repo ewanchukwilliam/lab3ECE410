@@ -1,0 +1,5 @@
+INFO: [VRFC 10-163] Analyzing VHDL file "/home/williamewanchuk/School/2025fall/ECE410/lab3/lab3files/extend_unit_tb.vhdl" into library xil_defaultlib
+INFO: [VRFC 10-3107] analyzing entity 'extend_unit_tb'
+ERROR: [VRFC 10-2987] 'extension_unit' is not compiled in library 'xil_defaultlib' [/home/williamewanchuk/School/2025fall/ECE410/lab3/lab3files/extend_unit_tb.vhdl:77]
+ERROR: [VRFC 10-9458] unit 'tb' is ignored due to previous errors [/home/williamewanchuk/School/2025fall/ECE410/lab3/lab3files/extend_unit_tb.vhdl:8]
+INFO: [VRFC 10-8704] VHDL file '/home/williamewanchuk/School/2025fall/ECE410/lab3/lab3files/extend_unit_tb.vhdl' is ignored due to errors
