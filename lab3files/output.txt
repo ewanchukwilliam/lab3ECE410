@@ -1,0 +1,948 @@
+===== single_cycle_riscv_tb.vhd =====
+LIBRARY ieee;
+USE ieee.std_logic_1164.ALL;
+USE ieee.numeric_std.ALL;
+
+ENTITY single_cycle_riscv_tb IS
+END ENTITY;
+
+ARCHITECTURE tb OF single_cycle_riscv_tb IS
+
+    -- DUT port signals
+    SIGNAL clock    : STD_LOGIC                     := '0';
+    SIGNAL out_data : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+
+BEGIN
+
+    -- DUT instance
+    DUT : ENTITY work.single_cycle_riscv(structural)
+        PORT MAP(
+            clock    => clock,
+            out_data => out_data
+        );
+
+    clk_process : PROCESS
+    BEGIN
+        FOR i IN 0 TO 3 LOOP
+            clock <= '0';
+            WAIT FOR 1 ns;
+            clock <= '1';
+            WAIT FOR 1 ns;
+        END LOOP;
+        WAIT;
+    END PROCESS;
+
+END ARCHITECTURE;
+
+===== single_cycle_riscv.vhd =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : single_cycle_riscv.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : Top-level RISC-V CPU combining single-cycle datapath and control logic.
+--                Executes basic load, store, and arithmetic instructions.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY single_cycle_riscv IS
+    PORT (
+        clock     : IN STD_LOGIC;
+        out_data : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END ENTITY;
+
+ARCHITECTURE Structural OF single_cycle_riscv IS
+    SIGNAL zero_flag                       : STD_LOGIC                     := '0';
+    SIGNAL pc, pc_next                     : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL instruction, imm_ext, alu_result : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL rs1_data, rs2_data, rd_data     : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL mem_write                         : STD_LOGIC;
+    SIGNAL reg_write                         : STD_LOGIC;
+    SIGNAL funct7_30                          : STD_LOGIC;
+    SIGNAL alu_src, mem_to_reg, output_en    : STD_LOGIC;
+    SIGNAL funct3                          : STD_LOGIC_VECTOR(2 DOWNTO 0);
+    SIGNAL imm_src                          : STD_LOGIC_VECTOR(2 DOWNTO 0);
+    SIGNAL alu_op                         : STD_LOGIC_VECTOR(2 DOWNTO 0);
+    SIGNAL op_code                          : STD_LOGIC_VECTOR(6 DOWNTO 0);
+
+BEGIN
+
+    datapath : ENTITY work.lw_sw_datapath(structural)
+        PORT MAP(
+            clock       => clock,
+            mem_write   => mem_write,    -- Signal 13: from controller
+            reg_write   => reg_write,    -- Signal 10: from controller
+            alu_src     => alu_src,      -- Signal 11: from controller
+            mem_to_reg  => mem_to_reg,   -- Signal 14: from controller
+            output_en   => output_en,    -- Signal 15: from controller
+            imm_src     => imm_src,      -- Signal 8: from controller
+            alu_op      => alu_op,       -- Signal 12: from controller
+            op_code     => op_code,      -- Signal 1: to controller
+            funct3      => funct3,       -- Signal 2: to controller
+            funct7_30   => funct7_30,    -- Signal 3: to controller
+            zero_flag   => zero_flag,    -- zero flag to controller
+            out_data    => out_data
+        );
+
+    control_unit : ENTITY work.controller(behavioral)
+        PORT MAP(
+            op_code     => op_code,      -- Signal 1: from datapath
+            funct3      => funct3,       -- Signal 2: from datapath
+            funct7_30   => funct7_30,    -- Signal 3: from datapath
+            zero_flag   => zero_flag,    -- zero flag from datapath
+            alu_src     => alu_src,      -- Signal 11: to datapath
+            mem_to_reg  => mem_to_reg,   -- Signal 14: to datapath
+            mem_write   => mem_write,    -- Signal 13: to datapath
+            reg_write   => reg_write,    -- Signal 10: to datapath
+            output_en   => output_en,    -- Signal 15: to datapath
+            imm_src     => imm_src,      -- Signal 8: to datapath
+            alu_op      => alu_op        -- Signal 12: to datapath
+        );
+END Structural;
+
+===== tri_state_buffer.vhd =====
+----------------------------------------------------------------------------------
+-- Company: Department of Electrical and Computer Engineering, University of Alberta
+-- Engineer: Shyama Gandhi and Bruce Cockburn
+-- Create Date: 10/29/2020 07:18:24 PM
+-- Module Name: cpu - structural(datapath)
+-- Description: CPU_LAB 3 - ECE 410 (2021)
+-- Revision:
+-- Revision 0.01 - File Created
+-- Revision 2.01 - File Modified by Shyama Gandhi (November 2, 2021)
+-- Revision 3.01 - File Modified by Antonio Andara (October 31, 2023)
+-- Revision 4.01 - File Modified by Antonio Andara (October 28, 2024)
+-- Additional Comments:
+--*********************************************************************************
+-- When the enable line is asserted, the output from the accumulator will be stored in the buffer.
+-- The value stored in the output buffer will the output of this CPU. 
+-----------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+
+ENTITY tri_state_buffer IS
+    PORT (
+        output_en     : IN STD_LOGIC;
+        buffer_input  : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        buffer_output : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END tri_state_buffer;
+
+ARCHITECTURE Behavioral OF tri_state_buffer IS
+BEGIN
+
+    buffer_output <= buffer_input WHEN output_en = '1' ELSE (OTHERS => 'Z');
+
+END Behavioral;
+
+===== adder_32.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : adder_32.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description : 32-bit adder (basic version, no carry or overflow)
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY adder_32 IS
+    PORT (
+        op_a : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        op_b : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        sum  : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END ENTITY;
+
+ARCHITECTURE Behavioral OF adder_32 IS
+BEGIN
+
+    sum <= STD_LOGIC_VECTOR(UNSIGNED(op_a) + UNSIGNED(op_b));
+
+END Behavioral;
+
+===== alu.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : alu.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : 32-bit ALU performing AND, OR, XOR, ADD, and SUB
+--                3-bit control signal (alu_ctrl).
+--                'zero_flag' = '1' when result = 0.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY alu IS
+    PORT (
+        src_a     : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        src_b     : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        alu_ctrl  : IN STD_LOGIC_VECTOR(2 DOWNTO 0);
+        result    : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        zero_flag : OUT STD_LOGIC
+    );
+END ENTITY;
+
+ARCHITECTURE Behavioral OF alu IS
+    SIGNAL alu_out : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+BEGIN
+    result    <= alu_out;
+
+    zero_flag <= '1' WHEN alu_out = x"00000000" ELSE '0';
+
+    WITH alu_ctrl SELECT
+        alu_out <=
+        src_a AND src_b                                     WHEN "001",
+        src_a OR src_b                                      WHEN "010",
+        src_a XOR src_b                                     WHEN "011",
+        STD_LOGIC_VECTOR(UNSIGNED(src_a) + UNSIGNED(src_b)) WHEN "100",
+        STD_LOGIC_VECTOR(UNSIGNED(src_a) - UNSIGNED(src_b)) WHEN "101",
+        (OTHERS => '0') WHEN OTHERS;
+
+END Behavioral;
+
+===== data_memory.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : data_memory.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : 1 KB data memory with 32-bit read/write interface.
+--                Supports synchronous writes and asynchronous reads.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY data_mem IS
+    PORT (
+        address    : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        write_data : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        data       : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        write_en   : IN STD_LOGIC;
+        clock      : IN STD_LOGIC
+    );
+END ENTITY;
+
+ARCHITECTURE behavioral OF data_mem IS
+
+    TYPE memory_data IS ARRAY (0 TO 1023) OF STD_LOGIC_VECTOR(31 DOWNTO 0);
+    SIGNAL RAM : memory_data := (
+        4 => x"DEADBEEF",
+        8 => x"CAFEBABE",
+        OTHERS => (OTHERS => '0')
+    );
+
+BEGIN
+
+    PROCESS (clock) IS
+    BEGIN
+        IF rising_edge(clock) AND write_en = '1' THEN
+            RAM(to_integer(unsigned(address))) <= write_data;
+        END IF;
+    END PROCESS;
+
+    data <= RAM(to_integer(unsigned(address)));
+
+END behavioral;
+
+ARCHITECTURE rtl OF data_mem IS
+
+    TYPE memory_data IS ARRAY (0 TO 1023) OF STD_LOGIC_VECTOR(7 DOWNTO 0);
+    SIGNAL RAM : memory_data := (
+        -- Test values (little-endian)
+        -- Address 4: 0x66BEDEAD
+        4 => x"AD", 5 => x"DE", 6 => x"BE", 7 => x"66",
+        -- Address 8: 0x88888888
+        8 => x"88", 9 => x"88", 10 => x"88", 11 => x"88",
+        -- Address 12: 0x12DABEEF
+        12 => x"EF", 13 => x"BE", 14 => x"DA", 15 => x"12",
+        OTHERS => (OTHERS => '0')
+    );
+
+    SIGNAL addr_int : INTEGER := 0;
+
+BEGIN
+
+    -- Convert 32-bit address to integer
+    addr_int <= to_integer(unsigned(address(9 DOWNTO 0))); -- 1 KB = 10-bit addressing
+
+    -- Synchronous write
+    PROCESS (clock)
+    BEGIN
+        IF rising_edge(clock) THEN
+            IF write_en = '1' THEN
+                -- Write 32-bit word to memory in little-endian byte order
+                RAM(addr_int + 0) <= write_data(7 DOWNTO 0);    -- LSB
+                RAM(addr_int + 1) <= write_data(15 DOWNTO 8);
+                RAM(addr_int + 2) <= write_data(23 DOWNTO 16);
+                RAM(addr_int + 3) <= write_data(31 DOWNTO 24);  -- MSB
+            END IF;
+        END IF;
+    END PROCESS;
+
+    -- Combinational read
+    -- Reconstruct 32-bit word from four bytes in little-endian order
+    data <= RAM(addr_int + 3) & RAM(addr_int + 2) & RAM(addr_int + 1) & RAM(addr_int + 0);
+
+END ARCHITECTURE rtl;
+
+===== extend_unit_tb.vhdl =====
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY extend_unit_tb IS
+END ENTITY;
+
+ARCHITECTURE tb OF extend_unit_tb IS
+
+    SIGNAL instr        : STD_LOGIC_VECTOR(31 DOWNTO 7) := (OTHERS => '0');
+    SIGNAL imm_sel      : STD_LOGIC_VECTOR(2 DOWNTO 0)  := (OTHERS => '0');
+    SIGNAL imm_ext      : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL expect       : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+
+    -- Convert std_logic_vector to hex string
+    FUNCTION to_hex(slv : STD_LOGIC_VECTOR) RETURN STRING IS
+        CONSTANT hex_chars  : STRING := "0123456789ABCDEF";
+        VARIABLE result     : STRING(1 TO (slv'length + 3)/4);
+        VARIABLE nibble     : STD_LOGIC_VECTOR(3 DOWNTO 0);
+        VARIABLE i          : INTEGER := slv'length - 1;
+        VARIABLE idx        : INTEGER := 1;
+        VARIABLE value      : INTEGER;
+    BEGIN
+        WHILE i >= 0 LOOP
+            nibble := (OTHERS => '0');
+            FOR j IN 0 TO 3 LOOP
+                IF (i - j) >= 0 THEN
+                    nibble(3 - j) := slv(i - j);
+                END IF;
+            END LOOP;
+            value       := to_integer(unsigned(nibble));
+            result(idx) := hex_chars(value + 1);
+            idx         := idx + 1;
+            i           := i - 4;
+        END LOOP;
+        RETURN result;
+    END FUNCTION;
+
+    -- Test vector type
+    TYPE test_vector IS RECORD
+        name   : STRING(1 TO 6);
+        ctrl   : STD_LOGIC_VECTOR(2 DOWNTO 0);
+        instr  : STD_LOGIC_VECTOR(31 DOWNTO 7);
+        expect : STD_LOGIC_VECTOR(31 DOWNTO 0);
+    END RECORD;
+
+    TYPE test_array IS ARRAY(NATURAL RANGE <>) OF test_vector;
+
+    CONSTANT tests : test_array := (
+        ("I-type", "010", "1010101010101111111111111", "11111111111111111111101010101010"),
+        ("U-type", "011", "1001100110011001100111111", "10011001100110011001000000000000"),
+        ("S-type", "100", "1111010000000000000011111", "11111111111111111111111101011111"),
+        ("B-type", "101", "1111111000000000000011110", "11111111111111111111011111111110"),
+        ("J-type", "110", "1011111111110110101010000", "11111111111101101010101111111110")
+    );
+
+    PROCEDURE run_test(
+        CONSTANT t     : test_vector;
+        SIGNAL imm_sel : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
+        SIGNAL instr   : OUT STD_LOGIC_VECTOR(31 DOWNTO 7);
+        SIGNAL expect  : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        SIGNAL imm_ext : IN STD_LOGIC_VECTOR(31 DOWNTO 0)
+    ) IS
+    BEGIN
+        imm_sel <= t.ctrl;
+        instr   <= t.instr;
+        WAIT FOR 1 ns;
+        ASSERT imm_ext = t.expect
+        REPORT t.name & " FAILED! Expected: " &
+            to_hex(t.expect) & " Got: " & to_hex(imm_ext)
+            SEVERITY error;
+        REPORT t.name & " passed." SEVERITY note;
+    END PROCEDURE;
+
+BEGIN
+
+    DUT : ENTITY work.extension_unit
+        PORT MAP(
+            din  => instr,
+            ctrl => imm_sel,
+            dout => imm_ext
+        );
+
+    stimuli : PROCESS
+    BEGIN
+        FOR i IN tests'RANGE LOOP
+            run_test(tests(i), imm_sel, instr, expect, imm_ext);
+        END LOOP;
+
+        REPORT "All tests completed." SEVERITY note;
+        WAIT;
+    END PROCESS;
+
+END ARCHITECTURE;
+
+===== extension_unit.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : extension_unit.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : Immediate field extender for RISC-V instruction formats.
+--                Supports I, S, B, U, and J-type immediate extraction.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY extension_unit IS
+    PORT (
+        din  : IN STD_LOGIC_VECTOR(31 DOWNTO 7);   -- Instruction bits [31:7]
+        ctrl : IN STD_LOGIC_VECTOR(2 DOWNTO 0);    -- Format selector
+        dout : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)   -- Extended immediate
+    );
+END ENTITY;
+
+ARCHITECTURE behavioral OF extension_unit IS
+BEGIN
+
+    PROCESS (din, ctrl)
+        VARIABLE imm : STD_LOGIC_VECTOR(31 DOWNTO 0);
+    BEGIN
+        -- Default to zero
+        imm := (OTHERS => '0');
+
+        CASE ctrl IS
+            -- I-type: imm[11:0] = inst[31:20]
+            WHEN "010" =>
+                imm(11 DOWNTO 0) := din(31 DOWNTO 20);
+                -- Sign extend from bit 11
+                IF din(31) = '1' THEN
+                    imm(31 DOWNTO 12) := (OTHERS => '1');
+                END IF;
+
+            -- U-type: imm[31:12] = inst[31:12], imm[11:0] = 0
+            WHEN "011" =>
+                imm(31 DOWNTO 12) := din(31 DOWNTO 12);
+                imm(11 DOWNTO 0) := (OTHERS => '0');
+
+            -- S-type: imm[11:5] = inst[31:25], imm[4:0] = inst[11:7]
+            WHEN "100" =>
+                imm(11 DOWNTO 5) := din(31 DOWNTO 25);
+                imm(4 DOWNTO 0) := din(11 DOWNTO 7);
+                -- Sign extend from bit 11
+                IF din(31) = '1' THEN
+                    imm(31 DOWNTO 12) := (OTHERS => '1');
+                END IF;
+
+            -- B-type: imm[12] = inst[31], imm[10:5] = inst[30:25],
+            --         imm[4:1] = inst[11:8], imm[11] = inst[7], imm[0] = 0
+            WHEN "101" =>
+                imm(12) := din(31);
+                imm(11) := din(7);
+                imm(10 DOWNTO 5) := din(30 DOWNTO 25);
+                imm(4 DOWNTO 1) := din(11 DOWNTO 8);
+                imm(0) := '0';
+                -- Sign extend from bit 12
+                IF din(31) = '1' THEN
+                    imm(31 DOWNTO 13) := (OTHERS => '1');
+                END IF;
+
+            -- J-type: imm[20] = inst[31], imm[10:1] = inst[30:21],
+            --         imm[11] = inst[20], imm[19:12] = inst[19:12], imm[0] = 0
+            WHEN "110" =>
+                imm(20) := din(31);
+                imm(19 DOWNTO 12) := din(19 DOWNTO 12);
+                imm(11) := din(20);
+                imm(10 DOWNTO 1) := din(30 DOWNTO 21);
+                imm(0) := '0';
+                -- Sign extend from bit 20
+                IF din(31) = '1' THEN
+                    imm(31 DOWNTO 21) := (OTHERS => '1');
+                END IF;
+
+            WHEN OTHERS =>
+                imm := (OTHERS => '0');
+        END CASE;
+
+        dout <= imm;
+    END PROCESS;
+
+END behavioral;
+
+===== instruction_memory.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : instruction_memory.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : 1 KB instruction memory (ROM) storing a simple RISC-V program.
+--                Provides 32-bit instruction fetch based on byte address.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY instr_mem IS
+    PORT (
+        address : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        data    : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END ENTITY;
+
+ARCHITECTURE rtl OF instr_mem IS
+
+    -- Byte-addressable ROM
+    TYPE memory_data IS ARRAY (0 TO 1023) OF STD_LOGIC_VECTOR(7 DOWNTO 0);
+    CONSTANT ROM : memory_data := (
+        -- Program (little-endian)
+        -- 0x0044A303   lw x6, 4(x9)
+        0 => x"03", 1 => x"A3", 2 => x"44", 3 => x"00",
+        -- 0x0064A423   sw x6, 8(x9)
+        4 => x"23", 5 => x"A4", 6 => x"64", 7 => x"00",
+        -- 0x00C02103   lw x2, 12(x0)
+        8 => x"03", 9 => x"21", 10 => x"C0", 11 => x"00",
+        -- 0x00610433   add x8, x2, x6
+        12 => x"33", 13 => x"04", 14 => x"61", 15 => x"00",
+        OTHERS => (OTHERS => '0')
+    );
+
+    SIGNAL addr_int : INTEGER := 0;
+
+BEGIN
+    addr_int <= to_integer(unsigned(address(9 DOWNTO 0))); -- Address conversion fits 1 KB of ROM
+
+    -- read 4 consecutive bytes form one 32-bit word
+    data <= ROM(addr_int + 3) &
+            ROM(addr_int + 2) &
+            ROM(addr_int + 1) &
+            ROM(addr_int);
+
+END ARCHITECTURE rtl;
+
+===== mux_2to1.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : mux_2to1.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : 32-bit 2-to-1 multiplexer.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+
+ENTITY mux_2to1 IS
+    PORT(
+        in0   : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        in1   : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        out_y : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        sel   : IN STD_LOGIC
+    );
+END ENTITY;
+
+ARCHITECTURE Behavioral OF mux_2to1 IS
+BEGIN
+    out_y <= in0 WHEN sel = '0' ELSE in1;
+END Behavioral;
+===== pc_adder.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : pc_adder.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : Adds a configurable value to the program counter (default 4).
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY pc_adder IS
+    GENERIC (
+        INCREMENT : unsigned(31 DOWNTO 0) := to_unsigned(4, 32)
+    );
+    PORT (
+        pc_current : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        pc_next    : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END ENTITY;
+
+ARCHITECTURE structural OF pc_adder IS
+BEGIN
+    u_pc_adder : ENTITY WORK.adder_32(Behavioral)
+        PORT MAP(
+            op_a => pc_current,
+            op_b => STD_LOGIC_VECTOR(INCREMENT),
+            sum  => pc_next
+        );
+END structural;
+
+===== program_counter.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : program_counter.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : 32-bit program counter register. Updates PC on each rising clock edge.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+
+ENTITY program_counter IS
+    PORT (
+        clock   : IN STD_LOGIC;
+        pc_next : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        pc_out      : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END ENTITY;
+
+ARCHITECTURE behavioral OF program_counter IS
+    SIGNAL pc_reg : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+BEGIN
+    pc_out <= pc_reg;
+
+    PROCESS (clock)
+    BEGIN
+        IF rising_edge(clock) THEN
+            pc_reg <= pc_next;
+        END IF;
+    END PROCESS;
+
+END behavioral;
+
+===== register_file.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : register_file.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : RISC-V register file with 32 registers (x0–x31), two read ports,
+--                and one synchronous write port. x0 remains constant at zero.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY register_file IS
+    PORT (
+        clock    : IN STD_LOGIC;
+        rs1_addr : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+        rs2_addr : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+        rd_addr  : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+        rd_data  : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+        rs1_data : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        rs2_data : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        rd_we    : IN STD_LOGIC
+    );
+END ENTITY;
+
+ARCHITECTURE behavioral OF register_file IS
+
+    TYPE register_array IS ARRAY (0 TO 31) OF STD_LOGIC_VECTOR(31 DOWNTO 0);
+    SIGNAL reg_file : register_array := (OTHERS => (OTHERS => '0'));
+
+BEGIN
+    -- Synchronous write
+    PROCESS (clock) IS
+    BEGIN
+        IF rising_edge(clock) THEN
+            IF rd_we = '1' AND rd_addr /= "00000" THEN
+                reg_file(to_integer(unsigned(rd_addr))) <= rd_data;
+            END IF;
+        END IF;
+    END PROCESS;
+
+    -- Combinational reads
+    rs1_data <= reg_file(to_integer(unsigned(rs1_addr)));
+    rs2_data <= reg_file(to_integer(unsigned(rs2_addr)));
+
+END behavioral;
+
+===== single_cycle_controller.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : single_cycle_controller.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : Single-cycle control unit for a simple RISC-V processor.
+--                Decodes op_code, funct3, and funct7 fields to generate
+--                ALU, memory, and register control signals.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY controller IS
+    PORT (
+        op_code    : IN STD_LOGIC_VECTOR(6 DOWNTO 0);
+        funct3    : IN STD_LOGIC_VECTOR(2 DOWNTO 0);
+        funct7_30    : IN STD_LOGIC;
+        zero_flag : IN STD_LOGIC;
+        alu_src   : OUT STD_LOGIC;
+        mem_to_reg   : OUT STD_LOGIC;
+        mem_write   : OUT STD_LOGIC;
+        reg_write   : OUT STD_LOGIC;
+        output_en   : OUT STD_LOGIC;
+        imm_src    : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
+        alu_op   : OUT STD_LOGIC_VECTOR(2 DOWNTO 0)
+    );
+END controller;
+
+ARCHITECTURE Behavioral OF controller IS
+    -- "controls" is a compact control word encoding all the main control signals.
+    -- Bit mapping (from MSB to LSB):
+    --   [9]   - Selects ALU B operand source (0 = register, 1 = immediate)
+    --   [8]   - Selects write-back data source (0 = ALU result, 1 = memory read)
+    --   [7]   - Enables register file write
+    --   [6]   - Enables data memory write
+    --   [5:3] - Selects immediate format depending on the instruction type (I, S, etc.)
+    --   [2:0] - ALU control operation code
+    --
+    -- Each instruction assigns a 10-bit pattern to "controls" that defines its
+    -- full control behavior in a single line using the WITH-SELECT statement below.
+    SIGNAL controls     : STD_LOGIC_VECTOR(9 DOWNTO 0);
+
+    -- added for visibility in simulation
+    TYPE instruction IS (LW, SW, ADD, NOP);
+    SIGNAL instr : instruction := NOP;
+    SIGNAL aux          : STD_LOGIC_VECTOR(10 DOWNTO 0);
+
+    -- Instruction opcodes. add new values for each instruction
+    CONSTANT OPCODE_LW  : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0000011";
+    CONSTANT OPCODE_SW  : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0100011";
+    CONSTANT OPCODE_ADD : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0110011";
+
+    -- Control signals per instruction
+    CONSTANT CTRL_LW  : STD_LOGIC_VECTOR(9 DOWNTO 0) := "1110010100";
+    CONSTANT CTRL_SW  : STD_LOGIC_VECTOR(9 DOWNTO 0) := "1101011100";
+    CONSTANT CTRL_ADD : STD_LOGIC_VECTOR(9 DOWNTO 0) := "0010011100";
+    CONSTANT CTRL_NOP : STD_LOGIC_VECTOR(9 DOWNTO 0) := "0000000000";
+
+BEGIN
+    output_en <= '1';
+    aux <= funct7_30 & funct3 & op_code;
+
+    decode : PROCESS (op_code, funct3, funct7_30)
+    BEGIN
+        controls <= CTRL_NOP;
+
+        CASE op_code IS
+            WHEN OPCODE_LW =>
+                instr <= LW;
+                controls <= CTRL_LW;
+            WHEN OPCODE_SW =>
+                instr <= SW;
+                controls <= CTRL_SW;
+            WHEN OPCODE_ADD =>
+                IF funct3 = "000" AND funct7_30 = '0' THEN
+                    instr <= ADD;
+                    controls <= CTRL_ADD;
+                END IF;
+            WHEN OTHERS =>
+                instr <= NOP;
+                controls <= CTRL_NOP;
+        END CASE;
+    END PROCESS;
+
+    -- controller output assignments
+    alu_src <= controls(9);
+    mem_to_reg <= controls(8);
+    reg_write <= controls(7);
+    mem_write <= controls(6);
+    imm_src  <= controls(5 DOWNTO 3);
+    alu_op <= controls(2 DOWNTO 0);
+
+END Behavioral;
+
+===== single_cycle_datapath.vhdl =====
+------------------------------------------------------------------------
+-- University  : University of Alberta
+-- Course      : ECE 410
+-- Project     : Lab 3
+-- File        : single_cycle_datapath.vhdl
+-- Authors     : Antonio Alejandro Andara Lara
+-- Date        : 23-Oct-2025
+------------------------------------------------------------------------
+-- Description  : Structural implementation of a single-cycle RISC-V datapath.
+--                Includes PC, instruction fetch, decode, ALU, memory, and write-back.
+------------------------------------------------------------------------
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY lw_sw_datapath IS
+    PORT (
+        clock       : IN STD_LOGIC;
+        mem_write     : IN STD_LOGIC;
+        reg_write     : IN STD_LOGIC;
+        alu_src     : IN STD_LOGIC;
+        mem_to_reg     : IN STD_LOGIC;
+        output_en     : IN STD_LOGIC;
+        imm_src      : IN STD_LOGIC_VECTOR(2 DOWNTO 0);
+        alu_op     : IN STD_LOGIC_VECTOR(2 DOWNTO 0);
+        op_code      : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
+        funct3      : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
+        funct7_30      : OUT STD_LOGIC;
+        zero_flag   : OUT STD_LOGIC;
+        out_data   : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+    );
+END ENTITY;
+
+ARCHITECTURE structural OF lw_sw_datapath IS
+
+    SIGNAL pc, pc_next                      : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL instruction, imm_ext, alu_result : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL rs1_data, rs2_data, rd_data      : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL result_mux_o                     : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL alu_mux_o                        : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+
+BEGIN
+    op_code   <= instruction(6 DOWNTO 0);
+    funct3   <= instruction(14 DOWNTO 12);
+    funct7_30   <= instruction(30);
+
+------------------------------------------------------------------------
+-- FETCH BLOCK
+------------------------------------------------------------------------
+    dp_pc : ENTITY work.program_counter(Behavioral)
+        PORT MAP(
+            clock   => clock,
+            pc_out  => pc,
+            pc_next => pc_next
+        );
+
+    dp_pc_adder : ENTITY work.pc_adder(structural)
+        PORT MAP(
+            pc_current => pc,
+            pc_next    => pc_next
+        );
+
+    dp_instr_mem : ENTITY work.instr_mem(rtl)
+        PORT MAP(
+            address => pc,
+            data    => instruction
+        );
+
+------------------------------------------------------------------------
+-- DECODE BLOCK
+------------------------------------------------------------------------
+    dp_regfile : ENTITY work.register_file(behavioral)
+        PORT MAP(
+            clock    => clock,
+            rs1_addr => instruction(19 DOWNTO 15),  -- Signal 4: rs1_addr
+            rs2_addr => instruction(24 DOWNTO 20),  -- Signal 5: rs2_addr
+            rd_addr  => instruction(11 DOWNTO 7),   -- Signal 6: rd_addr
+            rd_data  => result_mux_o,
+            rs1_data => rs1_data,
+            rs2_data => rs2_data,
+            rd_we    => reg_write
+        );
+
+    dp_extend : ENTITY work.extension_unit(behavioral)
+        PORT MAP(
+            din  => instruction(31 DOWNTO 7),  -- Signal 7: imm_field
+            ctrl => imm_src,                   -- Signal 8: imm_src
+            dout => imm_ext                    -- Signal 9: imm_ext
+        );
+
+------------------------------------------------------------------------
+-- EXECUTE & MEMORY BLOCK
+------------------------------------------------------------------------
+    dp_alu_src : ENTITY work.mux_2to1(behavioral)
+        PORT MAP(
+            in0   => rs2_data,
+            in1   => imm_ext,
+            out_y => alu_mux_o,
+            sel   => alu_src
+        );
+
+    dp_alu : ENTITY work.alu(behavioral)
+        PORT MAP(
+            src_a     => rs1_data,
+            src_b     => alu_mux_o,
+            alu_ctrl  => alu_op,
+            result    => alu_result,
+            zero_flag => zero_flag
+        );
+
+    dp_data_mem : ENTITY work.data_mem(rtl)
+        PORT MAP(
+            clock      => clock,
+            address    => alu_result,
+            write_data => rs2_data,
+            data       => rd_data,
+            write_en   => mem_write
+        );
+
+------------------------------------------------------------------------
+-- WRITE-BACK BLOCK
+------------------------------------------------------------------------
+    dp_result_src : ENTITY work.mux_2to1(behavioral)
+        PORT MAP(
+            in0   => alu_result,
+            in1   => rd_data,
+            out_y => result_mux_o,
+            sel   => mem_to_reg
+        );
+
+    dp_tri_state_buffer: ENTITY work.tri_state_buffer(Behavioral)
+        PORT MAP(
+            output_en => output_en,
+            buffer_input => result_mux_o,
+            buffer_output=> out_data
+        );
+
+END structural;
+

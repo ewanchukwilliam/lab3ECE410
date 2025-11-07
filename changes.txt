@@ -1,0 +1,382 @@
+
+what I used for the naming of the variables in the diagrams:
+
+| #  | Clean name   | Width | From → To                         | What it is / does                          |
+| -- | ------------ | ----: | --------------------------------- | ------------------------------------------ |
+| 1  | `opcode`     |     7 | ProgramMem.RD[6:0] → Controller   | Instruction type (LW, SW, R-type, …).      |
+| 2  | `funct3`     |     3 | ProgramMem.RD[14:12] → Controller | Sub-op selector (e.g., ADD vs others).     |
+| 3  | `funct7_30`  |     1 | ProgramMem.RD[30] → Controller    | Distinguishes ADD/SUB for R-type.          |
+| 4  | `rs1_addr`   |     5 | ProgramMem.RD[19:15] → RegFile.A1 | Register source 1 address.                 |
+| 5  | `rs2_addr`   |     5 | ProgramMem.RD[24:20] → RegFile.A2 | Register source 2 address.                 |
+| 6  | `rd_addr`    |     5 | ProgramMem.RD[11:7] → RegFile.A3  | Destination register address.              |
+| 7  | `imm_field`  |    25 | ProgramMem.RD[31:7] → Extender    | Raw immediate bits to be extended.         |
+| 8  | `imm_src`    |     3 | Controller → Extender             | Immediate format select (I/S/B… type).     |
+| 9  | `imm_ext`    |    32 | Extender → ALU-B mux              | Sign/zero-extended immediate to ALU.       |
+| 10 | `reg_write`  |     1 | Controller → RegFile.WE3          | Enables writeback to `rd`.                 |
+| 11 | `alu_src`    |     1 | Controller → ALU-B mux            | 0: RD2, 1: `imm_ext`.                      |
+| 12 | `alu_op`     |     3 | Controller → ALU                  | ALU operation code (ADD/SUB/…).            |
+| 13 | `mem_write`  |     1 | Controller → DataMem              | Assert to perform `sw`.                    |
+| 14 | `mem_to_reg` |     1 | Controller → result_mux           | 0: ALU result, 1: memory data (for `lw`).  |
+| 15 | `output_en`  |     1 | Controller → output_buffer        | Tri-state driver enable (often tied high). |
+
+========================================================================
+FILE 1: lab3files/single_cycle_datapath.vhdl
+========================================================================
+
+CHANGE 1: Register File Address Signals (Lines 76-78)
+----------------------------------------------------------------------
+WHAT CHANGED:
+  The register file port map had undefined signals (rs1_addr, rs2_addr,
+  rd_addr) that were used but never assigned values.
+
+BEFORE:
+  rs1_addr => rs1_addr,
+  rs2_addr => rs2_addr,
+  rd_addr  => rd_addr,
+
+AFTER:
+  rs1_addr => instruction(19 DOWNTO 15),  -- Signal 4: rs1_addr
+  rs2_addr => instruction(24 DOWNTO 20),  -- Signal 5: rs2_addr
+  rd_addr  => instruction(11 DOWNTO 7),   -- Signal 6: rd_addr
+
+WHY:
+  According to the RISC-V instruction format and the signal naming
+  table:
+  - Signal #4 (rs1_addr): 5-bit register source 1 address comes from
+    instruction bits [19:15]
+  - Signal #5 (rs2_addr): 5-bit register source 2 address comes from
+    instruction bits [24:20]
+  - Signal #6 (rd_addr): 5-bit destination register address comes from
+    instruction bits [11:7]
+
+  These bit fields are standard in RISC-V R-type, I-type, S-type, and
+  B-type instructions, allowing the register file to read the correct
+  source registers and write to the correct destination register.
+
+DIAGRAM REFERENCE:
+  Single-cycle datapath diagram shows signals labeled 4, 5, 6 going
+  from Program Memory (instruction bits) to Register File ports A1,
+  A2, and A3 respectively.
+
+
+CHANGE 2: Extension Unit Instantiation (Lines 85-90)
+----------------------------------------------------------------------
+WHAT CHANGED:
+  Added the missing extension_unit component instantiation that was
+  marked with a TODO comment.
+
+BEFORE:
+  -- TODO: Instantiate your immediate extension unit here.
+  --       Connect it to the 'instruction(31 DOWNTO 7)' input,
+  --       the 'imm_sel' control signal, and drive the 'imm_ext' output.
+
+AFTER:
+  dp_extend : ENTITY work.extension_unit(behavioral)
+      PORT MAP(
+          din  => instruction(31 DOWNTO 7),  -- Signal 7: imm_field
+          ctrl => imm_src,                   -- Signal 8: imm_src
+          dout => imm_ext                    -- Signal 9: imm_ext
+      );
+
+WHY:
+  According to the signal naming table:
+  - Signal #7 (imm_field): 25-bit raw immediate field comes from
+    instruction bits [31:7]. Different instruction types encode
+    immediates differently in these bits.
+  - Signal #8 (imm_src): 3-bit control signal from the controller
+    selects which immediate format to use (I-type, S-type, B-type,
+    U-type, or J-type).
+  - Signal #9 (imm_ext): 32-bit sign/zero-extended immediate output
+    that goes to the ALU B input multiplexer.
+
+  The extender is essential for instructions that use immediate values
+  (LW, SW, ADDI, branches, etc.) as it properly formats and extends
+  the immediate to 32 bits for ALU operations.
+
+DIAGRAM REFERENCE:
+  Single-cycle datapath diagram shows:
+  - Signal 7 (31:7) entering the Extend block
+  - Signal 8 controlling the Extend block
+  - Signal 9 (32-bit) exiting to the alu_mux
+
+
+PORT MAP INTERFACE:
+  Based on extend_unit_tb.vhdl (lines 77-82), the extension_unit
+  component has the following ports:
+  - din  : IN  STD_LOGIC_VECTOR(31 DOWNTO 7)   [25 bits]
+  - ctrl : IN  STD_LOGIC_VECTOR(2 DOWNTO 0)    [3 bits]
+  - dout : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)   [32 bits]
+
+========================================================================
+FILE 2: lab3files/single_cycle_riscv.vhd
+========================================================================
+
+CHANGE 1: Added output_en Signal Declaration (Line 32)
+----------------------------------------------------------------------
+WHAT CHANGED:
+  Added the output_en signal to the signal declarations.
+
+BEFORE:
+  SIGNAL alu_src, mem_to_reg                : STD_LOGIC;
+
+AFTER:
+  SIGNAL alu_src, mem_to_reg, output_en    : STD_LOGIC;
+
+WHY:
+  Signal #15 (output_en) is a control signal from the controller to
+  the tri-state output buffer. It needed to be declared as an internal
+  signal to connect the controller output to the datapath input.
+
+  The output_en signal controls when the CPU drives data to the
+  external output port, enabling or disabling the tri-state buffer.
+
+
+CHANGE 2: Completed Datapath Port Map (Lines 40-55)
+----------------------------------------------------------------------
+WHAT CHANGED:
+  Completed all port connections for the datapath instance that were
+  marked with a TODO comment.
+
+BEFORE:
+  datapath : ENTITY work.lw_sw_datapath(structural)
+      PORT MAP(
+          clock       => clock,
+          -- TODO: complete datapath port connections
+          out_data   => out_data
+      );
+
+AFTER:
+  datapath : ENTITY work.lw_sw_datapath(structural)
+      PORT MAP(
+          clock       => clock,
+          mem_write   => mem_write,    -- Signal 13: from controller
+          reg_write   => reg_write,    -- Signal 10: from controller
+          alu_src     => alu_src,      -- Signal 11: from controller
+          mem_to_reg  => mem_to_reg,   -- Signal 14: from controller
+          output_en   => output_en,    -- Signal 15: from controller
+          imm_src     => imm_src,      -- Signal 8: from controller
+          alu_op      => alu_op,       -- Signal 12: from controller
+          op_code     => op_code,      -- Signal 1: to controller
+          funct3      => funct3,       -- Signal 2: to controller
+          funct7_30   => funct7_30,    -- Signal 3: to controller
+          zero_flag   => zero_flag,    -- zero flag to controller
+          out_data    => out_data
+      );
+
+WHY:
+  The datapath requires:
+
+  INPUTS (Control signals from controller):
+  - mem_write (Signal #13): Enables writing to data memory (for SW)
+  - reg_write (Signal #10): Enables writing to register file (for LW, ADD)
+  - alu_src (Signal #11): Selects ALU B input (0=register, 1=immediate)
+  - mem_to_reg (Signal #14): Selects writeback source (0=ALU, 1=memory)
+  - output_en (Signal #15): Enables tri-state output buffer
+  - imm_src (Signal #8): Selects immediate format for extender
+  - alu_op (Signal #12): Specifies which ALU operation to perform
+
+  OUTPUTS (Status/decode signals to controller):
+  - op_code (Signal #1): 7-bit instruction opcode for decode
+  - funct3 (Signal #2): 3-bit function code for instruction subtype
+  - funct7_30 (Signal #3): Single bit from funct7 (distinguishes ADD/SUB)
+  - zero_flag: ALU comparison result (for branch instructions)
+
+  These connections create the bidirectional communication between the
+  controller and datapath necessary for proper CPU operation.
+
+DIAGRAM REFERENCE:
+  Single-cycle datapath diagram shows all these signals as numbered
+  connections between the controller (not shown) and various datapath
+  components.
+
+
+CHANGE 3: Completed Controller Port Map (Lines 57-70)
+----------------------------------------------------------------------
+WHAT CHANGED:
+  Completed all port connections for the controller instance that were
+  marked with a TODO comment.
+
+BEFORE:
+  control_unit : ENTITY work.controller(behavioral)
+      PORT MAP(
+          zero_flag   => zero_flag,
+          -- TODO: complete controller port connections
+      );
+
+AFTER:
+  control_unit : ENTITY work.controller(behavioral)
+      PORT MAP(
+          op_code     => op_code,      -- Signal 1: from datapath
+          funct3      => funct3,       -- Signal 2: from datapath
+          funct7_30   => funct7_30,    -- Signal 3: from datapath
+          zero_flag   => zero_flag,    -- zero flag from datapath
+          alu_src     => alu_src,      -- Signal 11: to datapath
+          mem_to_reg  => mem_to_reg,   -- Signal 14: to datapath
+          mem_write   => mem_write,    -- Signal 13: to datapath
+          reg_write   => reg_write,    -- Signal 10: to datapath
+          output_en   => output_en,    -- Signal 15: to datapath
+          imm_src     => imm_src,      -- Signal 8: to datapath
+          alu_op      => alu_op        -- Signal 12: to datapath
+      );
+
+WHY:
+  The controller requires:
+
+  INPUTS (Instruction decode and status from datapath):
+  - op_code (Signal #1): Determines instruction type (LW, SW, R-type, etc.)
+  - funct3 (Signal #2): Further specifies operation within instruction type
+  - funct7_30 (Signal #3): Distinguishes ADD from SUB in R-type instructions
+  - zero_flag: ALU zero output for conditional branch decisions
+
+  OUTPUTS (Control signals to datapath):
+  - alu_src (Signal #11): Controls ALU B input mux
+  - mem_to_reg (Signal #14): Controls result source mux (writeback)
+  - mem_write (Signal #13): Enables data memory writes
+  - reg_write (Signal #10): Enables register file writes
+  - output_en (Signal #15): Enables output tri-state buffer
+  - imm_src (Signal #8): Tells extender which immediate format to use
+  - alu_op (Signal #12): Tells ALU which operation to perform
+
+  The controller decodes the instruction fields (opcode, funct3, funct7_30)
+  and generates the appropriate control signals for that instruction. This
+  implements the control logic for the single-cycle CPU.
+
+REFERENCE:
+  See single_cycle_controller.vhdl lines 18-31 for the controller entity
+  definition that defines these ports.
+
+========================================================================
+FILE 3: lab3files/extension_unit.vhdl (NEWLY CREATED)
+========================================================================
+
+PURPOSE:
+  This file was created to implement the immediate field extender that
+  was instantiated in single_cycle_datapath.vhdl but did not exist.
+
+ENTITY DEFINITION:
+  ENTITY extension_unit
+    PORT (
+      din  : IN  STD_LOGIC_VECTOR(31 DOWNTO 7);   -- Instruction [31:7]
+      ctrl : IN  STD_LOGIC_VECTOR(2 DOWNTO 0);    -- Format selector
+      dout : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)    -- Extended immediate
+    );
+
+IMPLEMENTATION:
+  The behavioral architecture uses a CASE statement to decode the ctrl
+  signal and extract/extend the immediate value according to the RISC-V
+  instruction format:
+
+  ctrl = "010" (I-type):
+    - Extracts bits [31:20] as a 12-bit immediate
+    - Sign-extends to 32 bits
+    - Used for: ADDI, LW, JALR, etc.
+
+  ctrl = "011" (U-type):
+    - Places bits [31:12] in upper 20 bits
+    - Zeros lower 12 bits
+    - Used for: LUI, AUIPC
+
+  ctrl = "100" (S-type):
+    - Combines bits [31:25] and [11:7] as 12-bit immediate
+    - Sign-extends to 32 bits
+    - Used for: SW, SH, SB
+
+  ctrl = "101" (B-type):
+    - Rearranges bits for branch offset: {[31], [7], [30:25], [11:8], 0}
+    - Creates 13-bit immediate with LSB always 0 (2-byte aligned)
+    - Sign-extends to 32 bits
+    - Used for: BEQ, BNE, BLT, BGE, etc.
+
+  ctrl = "110" (J-type):
+    - Rearranges bits for jump offset: {[31], [19:12], [20], [30:21], 0}
+    - Creates 21-bit immediate with LSB always 0 (2-byte aligned)
+    - Sign-extends to 32 bits
+    - Used for: JAL
+
+WHY:
+  The RISC-V ISA encodes immediate values differently depending on the
+  instruction type to maximize encoding efficiency. The extender decodes
+  these formats and produces a uniform 32-bit signed immediate that can
+  be used by the ALU or address calculation logic.
+
+TESTING:
+  The extend_unit_tb.vhdl file contains test vectors for all five
+  immediate formats to verify correct extraction and sign extension.
+
+========================================================================
+FILE 4: lab3files/data_memory.vhdl (COMPLETED)
+========================================================================
+
+CHANGE: Completed RTL Architecture TODOs (Lines 74-86)
+----------------------------------------------------------------------
+WHAT CHANGED:
+  The rtl architecture had incomplete TODO sections for byte-wise
+  memory operations. Both the write and read logic were completed.
+
+BEFORE:
+  -- TODO: implement byte-wise write operation
+  -- Write 32-bit word to memory in little-endian byte order
+
+  -- TODO: reconstruct 32-bit word from four bytes in little-endian order
+  data <= -- your expression here
+
+AFTER:
+  -- Synchronous write with write_en check
+  IF write_en = '1' THEN
+      RAM(addr_int + 0) <= write_data(7 DOWNTO 0);    -- LSB
+      RAM(addr_int + 1) <= write_data(15 DOWNTO 8);
+      RAM(addr_int + 2) <= write_data(23 DOWNTO 16);
+      RAM(addr_int + 3) <= write_data(31 DOWNTO 24);  -- MSB
+  END IF;
+
+  -- Combinational read
+  data <= RAM(addr_int + 3) & RAM(addr_int + 2) &
+          RAM(addr_int + 1) & RAM(addr_int + 0);
+
+WHY:
+  The rtl architecture implements byte-addressable memory (unlike the
+  behavioral architecture which is word-addressable). This is more
+  realistic as real systems use byte addressing.
+
+  LITTLE-ENDIAN FORMAT:
+  - Least significant byte (LSB) is stored at lowest address
+  - Most significant byte (MSB) is stored at highest address
+  - Example: 0xDEADBEEF at address 0x00:
+      Address 0x00: 0xEF (bits 7:0)
+      Address 0x01: 0xBE (bits 15:8)
+      Address 0x02: 0xAD (bits 23:16)
+      Address 0x03: 0xDE (bits 31:24)
+
+  WRITE OPERATION:
+  - Breaks 32-bit word into 4 bytes
+  - Stores each byte at consecutive addresses
+  - Only writes when write_en is asserted
+
+  READ OPERATION:
+  - Reads 4 consecutive bytes from memory
+  - Concatenates them with MSB first (left) to LSB last (right)
+  - This reconstructs the original 32-bit word
+
+NOTE:
+  The datapath instantiates data_mem(rtl), so this architecture is the
+  one being used in the CPU design.
+
+[✓] Signal 1:  opcode (7 bits)     - ProgramMem → Controller
+[✓] Signal 2:  funct3 (3 bits)     - ProgramMem → Controller
+[✓] Signal 3:  funct7_30 (1 bit)   - ProgramMem → Controller
+[✓] Signal 4:  rs1_addr (5 bits)   - ProgramMem → RegFile.A1
+[✓] Signal 5:  rs2_addr (5 bits)   - ProgramMem → RegFile.A2
+[✓] Signal 6:  rd_addr (5 bits)    - ProgramMem → RegFile.A3
+[✓] Signal 7:  imm_field (25 bits) - ProgramMem → Extender
+[✓] Signal 8:  imm_src (3 bits)    - Controller → Extender
+[✓] Signal 9:  imm_ext (32 bits)   - Extender → ALU-B mux
+[✓] Signal 10: reg_write (1 bit)   - Controller → RegFile.WE3
+[✓] Signal 11: alu_src (1 bit)     - Controller → ALU-B mux
+[✓] Signal 12: alu_op (3 bits)     - Controller → ALU
+[✓] Signal 13: mem_write (1 bit)   - Controller → DataMem.WE
+[✓] Signal 14: mem_to_reg (1 bit)  - Controller → result_mux
+[✓] Signal 15: output_en (1 bit)   - Controller → output_buffer
+
+========================================================================
+END OF DOCUMENT
+========================================================================

@@ -73,18 +73,21 @@ BEGIN
     dp_regfile : ENTITY work.register_file(behavioral)
         PORT MAP(
             clock    => clock,
-            rs1_addr => rs1_addr,
-            rs2_addr => rs2_addr,
-            rd_addr  => rd_addr,
+            rs1_addr => instruction(19 DOWNTO 15),  -- Signal 4: rs1_addr
+            rs2_addr => instruction(24 DOWNTO 20),  -- Signal 5: rs2_addr
+            rd_addr  => instruction(11 DOWNTO 7),   -- Signal 6: rd_addr
             rd_data  => result_mux_o,
             rs1_data => rs1_data,
             rs2_data => rs2_data,
             rd_we    => reg_write
         );
 
-    -- TODO: Instantiate your immediate extension unit here.
-    --       Connect it to the 'instruction(31 DOWNTO 7)' input,
-    --       the 'imm_sel' control signal, and drive the 'imm_ext' output.
+    dp_extend : ENTITY work.extension_unit(behavioral)
+        PORT MAP(
+            din  => instruction(31 DOWNTO 7),  -- Signal 7: imm_field
+            ctrl => imm_src,                   -- Signal 8: imm_src
+            dout => imm_ext                    -- Signal 9: imm_ext
+        );
 
 ------------------------------------------------------------------------
 -- EXECUTE & MEMORY BLOCK

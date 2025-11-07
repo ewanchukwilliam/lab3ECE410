@@ -1,0 +1,16 @@
+#,Clean name,Width,From → To,What it is / does
+1,opcode,7,ProgramMem.RD[6:0] → Controller,Instruction type (LW SW R-type …).
+2,funct3,3,ProgramMem.RD[14:12] → Controller,Sub-op selector (e.g. ADD vs others).
+3,funct7_30,1,ProgramMem.RD[30] → Controller,Distinguishes ADD/SUB for R-type.
+4,rs1_addr,5,ProgramMem.RD[19:15] → RegFile.A1,Register source 1 address.
+5,rs2_addr,5,ProgramMem.RD[24:20] → RegFile.A2,Register source 2 address.
+6,rd_addr,5,ProgramMem.RD[11:7] → RegFile.A3,Destination register address.
+7,imm_field,25,ProgramMem.RD[31:7] → Extender,Raw immediate bits to be extended.
+8,imm_src,3,Controller → Extender,Immediate format select (I/S/B… type).
+9,imm_ext,32,Extender → ALU-B mux,Sign/zero-extended immediate to ALU.
+10,reg_write,1,Controller → RegFile.WE3,Enables writeback to rd.
+11,alu_src,1,Controller → ALU-B mux,0: RD2 1: imm_ext.
+12,alu_op,3,Controller → ALU,ALU operation code (ADD/SUB/…).
+13,mem_write,1,Controller → DataMem,Assert to perform sw.
+14,mem_to_reg,1,Controller → result_mux,0: ALU result 1: memory data (for lw).
+15,output_en,1,Controller → output_buffer,Tri-state driver enable (often tied high).
