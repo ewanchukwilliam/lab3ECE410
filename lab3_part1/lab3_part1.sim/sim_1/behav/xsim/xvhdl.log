@@ -1,4 +1,0 @@
-INFO: [VRFC 10-163] Analyzing VHDL file "/home/williamewanchuk/School/2025fall/ECE410/lab3/lab3files/extension_unit.vhdl" into library xil_defaultlib
-INFO: [VRFC 10-3107] analyzing entity 'extension_unit'
-INFO: [VRFC 10-163] Analyzing VHDL file "/home/williamewanchuk/School/2025fall/ECE410/lab3/lab3files/extend_unit_tb.vhdl" into library xil_defaultlib
-INFO: [VRFC 10-3107] analyzing entity 'extend_unit_tb'

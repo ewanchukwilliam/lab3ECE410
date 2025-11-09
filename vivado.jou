@@ -1,0 +1,23 @@
+#-----------------------------------------------------------
+# Vivado v2024.1 (64-bit)
+# SW Build 5076996 on Wed May 22 18:36:09 MDT 2024
+# IP Build 5075265 on Wed May 22 21:45:21 MDT 2024
+# SharedData Build 5076995 on Wed May 22 18:29:18 MDT 2024
+# Start of session at: Sat Nov  8 21:16:03 2025
+# Process ID: 35133
+# Current directory: /home/williamewanchuk/School/2025fall/ECE410/lab3
+# Command line: vivado -mode tcl
+# Log file: /home/williamewanchuk/School/2025fall/ECE410/lab3/vivado.log
+# Journal file: /home/williamewanchuk/School/2025fall/ECE410/lab3/vivado.jou
+# Running On        :pop-os
+# Platform          :Pop
+# Operating System  :Pop!_OS 22.04 LTS
+# Processor Detail  :AMD Ryzen 9 5900X 12-Core Processor
+# CPU Frequency     :3810.402 MHz
+# CPU Physical cores:12
+# CPU Logical cores :24
+# Host memory       :33568 MB
+# Swap memory       :21474 MB
+# Total Virtual     :55043 MB
+# Available Virtual :48522 MB
+#-----------------------------------------------------------

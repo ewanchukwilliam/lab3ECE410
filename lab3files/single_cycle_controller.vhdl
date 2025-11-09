@@ -26,6 +26,7 @@ ENTITY controller IS
         mem_write   : OUT STD_LOGIC;
         reg_write   : OUT STD_LOGIC;
         output_en   : OUT STD_LOGIC;
+        pc_src    : OUT STD_LOGIC;  -- Branch control signal
         imm_src    : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
         alu_op   : OUT STD_LOGIC_VECTOR(2 DOWNTO 0)
     );
@@ -46,19 +47,22 @@ ARCHITECTURE Behavioral OF controller IS
     SIGNAL controls     : STD_LOGIC_VECTOR(9 DOWNTO 0);
 
     -- added for visibility in simulation
-    TYPE instruction IS (LW, SW, ADD, NOP);
+    TYPE instruction IS (LW, SW, ADD, BEQ, NOP);
     SIGNAL instr : instruction := NOP;
     SIGNAL aux          : STD_LOGIC_VECTOR(10 DOWNTO 0);
 
     -- Instruction opcodes. add new values for each instruction
-    CONSTANT OPCODE_LW  : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0000011";
-    CONSTANT OPCODE_SW  : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0100011";
-    CONSTANT OPCODE_ADD : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0110011";
+    CONSTANT OPCODE_LW   : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0000011";
+    CONSTANT OPCODE_SW   : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0100011";
+    CONSTANT OPCODE_ADD  : STD_LOGIC_VECTOR(6 DOWNTO 0)  := "0110011";
+    CONSTANT OPCODE_BRANCH : STD_LOGIC_VECTOR(6 DOWNTO 0) := "1100011";
 
     -- Control signals per instruction
-    CONSTANT CTRL_LW  : STD_LOGIC_VECTOR(9 DOWNTO 0) := "1110010100";
-    CONSTANT CTRL_SW  : STD_LOGIC_VECTOR(9 DOWNTO 0) := "1101011100";
-    CONSTANT CTRL_ADD : STD_LOGIC_VECTOR(9 DOWNTO 0) := "0010011100";
+    -- Format: alu_src, mem_to_reg, reg_write, mem_write, imm_src[2:0], alu_op[2:0]
+    CONSTANT CTRL_LW  : STD_LOGIC_VECTOR(9 DOWNTO 0) := "1110010100";  -- LW: I-type, ALU add
+    CONSTANT CTRL_SW  : STD_LOGIC_VECTOR(9 DOWNTO 0) := "1101011100";  -- SW: S-type, ALU add
+    CONSTANT CTRL_ADD : STD_LOGIC_VECTOR(9 DOWNTO 0) := "0010011100";  -- ADD: R-type
+    CONSTANT CTRL_BEQ : STD_LOGIC_VECTOR(9 DOWNTO 0) := "0000101001";  -- BEQ: B-type, ALU sub
     CONSTANT CTRL_NOP : STD_LOGIC_VECTOR(9 DOWNTO 0) := "0000000000";
 
 BEGIN
@@ -81,6 +85,11 @@ BEGIN
                     instr <= ADD;
                     controls <= CTRL_ADD;
                 END IF;
+            WHEN OPCODE_BRANCH =>
+                IF funct3 = "000" THEN  -- BEQ has funct3 = 000
+                    instr <= BEQ;
+                    controls <= CTRL_BEQ;
+                END IF;
             WHEN OTHERS =>
                 instr <= NOP;
                 controls <= CTRL_NOP;
@@ -94,5 +103,8 @@ BEGIN
     mem_write <= controls(6);
     imm_src  <= controls(5 DOWNTO 3);
     alu_op <= controls(2 DOWNTO 0);
+
+    -- Branch control: take branch if BEQ instruction AND zero_flag is set
+    pc_src <= '1' WHEN (instr = BEQ AND zero_flag = '1') ELSE '0';
 
 END Behavioral;

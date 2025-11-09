@@ -22,6 +22,7 @@ ENTITY lw_sw_datapath IS
         alu_src     : IN STD_LOGIC;
         mem_to_reg     : IN STD_LOGIC;
         output_en     : IN STD_LOGIC;
+        pc_src      : IN STD_LOGIC;  -- Branch control: 0 = PC+4, 1 = branch target
         imm_src      : IN STD_LOGIC_VECTOR(2 DOWNTO 0);
         alu_op     : IN STD_LOGIC_VECTOR(2 DOWNTO 0);
         op_code      : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
@@ -39,6 +40,7 @@ ARCHITECTURE structural OF lw_sw_datapath IS
     SIGNAL rs1_data, rs2_data, rd_data      : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
     SIGNAL result_mux_o                     : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
     SIGNAL alu_mux_o                        : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
+    SIGNAL pc_plus_4, branch_target         : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
 
 BEGIN
     op_code   <= instruction(6 DOWNTO 0);
@@ -55,10 +57,28 @@ BEGIN
             pc_next => pc_next
         );
 
+    -- PC + 4 adder (sequential instruction)
     dp_pc_adder : ENTITY work.pc_adder(structural)
         PORT MAP(
             pc_current => pc,
-            pc_next    => pc_next
+            pc_next    => pc_plus_4
+        );
+
+    -- Branch target adder (PC + immediate offset)
+    dp_branch_adder : ENTITY work.adder_32(behavioral)
+        PORT MAP(
+            a      => pc,
+            b      => imm_ext,
+            result => branch_target
+        );
+
+    -- PC source mux: select between PC+4 and branch target
+    dp_pc_mux : ENTITY work.mux_2to1(behavioral)
+        PORT MAP(
+            in0   => pc_plus_4,      -- 0: sequential (PC+4)
+            in1   => branch_target,  -- 1: branch (PC + imm_ext)
+            sel   => pc_src,
+            out_y => pc_next
         );
 
     dp_instr_mem : ENTITY work.instr_mem(rtl)

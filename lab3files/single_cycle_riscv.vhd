@@ -29,7 +29,7 @@ ARCHITECTURE Structural OF single_cycle_riscv IS
     SIGNAL mem_write                         : STD_LOGIC;
     SIGNAL reg_write                         : STD_LOGIC;
     SIGNAL funct7_30                          : STD_LOGIC;
-    SIGNAL alu_src, mem_to_reg, output_en    : STD_LOGIC;
+    SIGNAL alu_src, mem_to_reg, output_en, pc_src : STD_LOGIC;
     SIGNAL funct3                          : STD_LOGIC_VECTOR(2 DOWNTO 0);
     SIGNAL imm_src                          : STD_LOGIC_VECTOR(2 DOWNTO 0);
     SIGNAL alu_op                         : STD_LOGIC_VECTOR(2 DOWNTO 0);
@@ -45,6 +45,7 @@ BEGIN
             alu_src     => alu_src,      -- Signal 11: from controller
             mem_to_reg  => mem_to_reg,   -- Signal 14: from controller
             output_en   => output_en,    -- Signal 15: from controller
+            pc_src      => pc_src,       -- Branch control: from controller
             imm_src     => imm_src,      -- Signal 8: from controller
             alu_op      => alu_op,       -- Signal 12: from controller
             op_code     => op_code,      -- Signal 1: to controller
@@ -65,6 +66,7 @@ BEGIN
             mem_write   => mem_write,    -- Signal 13: to datapath
             reg_write   => reg_write,    -- Signal 10: to datapath
             output_en   => output_en,    -- Signal 15: to datapath
+            pc_src      => pc_src,       -- Branch control: to datapath
             imm_src     => imm_src,      -- Signal 8: to datapath
             alu_op      => alu_op        -- Signal 12: to datapath
         );
