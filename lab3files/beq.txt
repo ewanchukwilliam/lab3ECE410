@@ -1,0 +1,160 @@
+================================================================================
+BEQ (Branch if Equal) Test Program Reference
+================================================================================
+
+OVERVIEW:
+This test program demonstrates the BEQ instruction with two scenarios:
+1. Branch TAKEN when registers are equal
+2. Branch NOT TAKEN when registers are different
+
+================================================================================
+ASSEMBLY CODE & EXECUTION
+================================================================================
+
+Cycle | PC    | Instruction        | Description
+------|-------|--------------------|-----------------------------------------
+  0   | 0x00  | lw x1, 0(x0)       | Load x1 = 5 from memory[0]
+  1   | 0x04  | lw x2, 4(x0)       | Load x2 = 5 from memory[4]
+  2   | 0x08  | beq x1, x2, 8      | x1 == x2? YES → BRANCH to PC+8 = 0x10
+  3   | 0x10  | lw x4, 12(x0)      | Load x4 = 10 from memory[12] (branch target)
+  4   | 0x14  | lw x5, 16(x0)      | Load x5 = 7 from memory[16]
+  5   | 0x18  | beq x4, x5, 4      | x4 == x5? NO → Don't branch, continue
+  6   | 0x1C  | lw x6, 20(x0)      | Load x6 = 100 from memory[20]
+
+NOTE: PC=0x0C (lw x3, 8(x0)) is SKIPPED because the branch at 0x08 was taken!
+
+================================================================================
+EXPECTED OUTPUTS (viewed in waveform or out_data signal)
+================================================================================
+
+Cycle | Output Value | Explanation
+------|--------------|------------------------------------------------------
+  0   | 0x00000005   | x1 = 5 loaded
+  1   | 0x00000005   | x2 = 5 loaded
+  2   | 0x00000000   | BEQ: ALU result (5-5=0), zero_flag='1', branch taken
+  3   | 0x0000000A   | x4 = 10 (0xA) loaded - PROVES BRANCH WORKED!
+  4   | 0x00000007   | x5 = 7 loaded
+  5   | 0x00000003   | BEQ: ALU result (10-7=3), zero_flag='0', no branch
+  6   | 0x00000064   | x6 = 100 (0x64) loaded
+
+SHORTENED: 5, 0, A, 7, 3, 64
+
+================================================================================
+VERIFICATION POINTS
+================================================================================
+
+✓ Key Test 1: Branch Taken (Cycle 2-3)
+  - At cycle 2: zero_flag = '1', pc_src = '1'
+  - PC jumps from 0x08 to 0x10 (skips 0x0C)
+  - x3 remains 0 (proves instruction at 0x0C was skipped)
+  - x4 = 0xA (proves we executed at 0x10)
+
+✓ Key Test 2: Branch Not Taken (Cycle 5-6)
+  - At cycle 5: zero_flag = '0', pc_src = '0'
+  - PC increments from 0x18 to 0x1C (sequential)
+  - x6 = 0x64 (proves instruction at 0x1C was executed)
+
+✓ Control Signals During BEQ:
+  - alu_op = "101" (SUB operation)
+  - imm_src = "101" (B-type immediate)
+  - alu_src = '0' (use register, not immediate)
+  - reg_write = '0' (don't write to register file)
+  - mem_write = '0' (don't write to memory)
+
+================================================================================
+MEMORY INITIALIZATION
+================================================================================
+
+Address | Value      | Purpose
+--------|------------|-------------------------------------------------------
+0x00    | 0x00000005 | Value for x1
+0x04    | 0x00000005 | Value for x2 (equal to x1)
+0x08    | 0x00000063 | Value 99 - should NOT be loaded (instruction skipped)
+0x0C    | 0x0000000A | Value 10 for x4
+0x10    | 0x00000007 | Value 7 for x5 (different from x4)
+0x14    | 0x00000064 | Value 100 for x6
+
+================================================================================
+BEQ INSTRUCTION ENCODING
+================================================================================
+
+Format: beq rs1, rs2, offset
+
+Example: beq x1, x2, 8
+  - rs1 = x1 (00001)
+  - rs2 = x2 (00010)
+  - offset = 8 bytes
+
+Binary Breakdown (B-type):
+  31    30:25     24:20  19:15  14:12  11:8      7      6:0
+  imm[12|10:5]    rs2    rs1   funct3 imm[4:1|11]    opcode
+  0_000000        00010  00001  000    0100_0      1100011
+
+Hex: 0x00208463
+Little-endian bytes: 0x63, 0x84, 0x20, 0x00
+
+================================================================================
+HOW BEQ WORKS INTERNALLY
+================================================================================
+
+1. DECODE:
+   - Controller recognizes opcode = 1100011, funct3 = 000
+   - Sets imm_src = "101" (B-type immediate extraction)
+   - Sets alu_op = "101" (subtraction)
+
+2. EXECUTE:
+   - Extension unit extracts and sign-extends branch offset
+   - ALU performs: rs1 - rs2
+   - Zero flag: zero_flag = '1' if result == 0, else '0'
+
+3. BRANCH DECISION:
+   - Branch target adder calculates: PC + imm_ext
+   - Controller sets: pc_src = BEQ AND zero_flag
+   - PC mux selects:
+     * pc_src = '0' → PC_next = PC + 4 (sequential)
+     * pc_src = '1' → PC_next = branch_target (jump)
+
+4. UPDATE PC:
+   - Next clock edge loads PC_next into PC register
+
+================================================================================
+TO SWITCH BACK TO THIS TEST PROGRAM
+================================================================================
+
+1. In instruction_memory.vhdl:
+   - Comment out the current test program
+   - Uncomment the "ORIGINAL BEQ TEST PROGRAM" section
+
+2. In data_memory.vhdl:
+   - Comment out the current test data
+   - Uncomment the "ORIGINAL BEQ TEST DATA" section
+
+3. Run simulation for at least 7 cycles (14ns with 2ns clock period)
+
+4. Observe outputs: 5, 0, A, 7, 3, 64, 0
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Issue: Getting "5, 63, 7, ..." instead of "5, 0, A, 7, ..."
+Cause: Branch was NOT taken (PC went to 0x0C instead of 0x10)
+Check:
+  - Is alu_op = "101" for BEQ? (should be SUB, not AND)
+  - Is zero_flag = '1' when rs1 == rs2?
+  - Is pc_src = '1' when BEQ AND zero_flag='1'?
+
+Issue: Wrong branch target address
+Cause: Immediate extraction or branch adder problem
+Check:
+  - Is imm_src = "101" for B-type?
+  - Is branch_target = PC + imm_ext?
+  - Is B-type immediate properly sign-extended?
+
+Issue: Branch always/never taken
+Cause: pc_src logic incorrect
+Check:
+  - pc_src should be '1' ONLY when (BEQ instruction AND zero_flag='1')
+  - PC mux: in0=PC+4, in1=branch_target, sel=pc_src
+
+================================================================================

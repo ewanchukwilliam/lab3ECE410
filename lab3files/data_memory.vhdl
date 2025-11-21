@@ -67,6 +67,24 @@ ARCHITECTURE rtl OF data_mem IS
         24 => x"00", 25 => x"00", 26 => x"00", 27 => x"00",
         -- Address 0x1C: 0xA3700A37
         28 => x"37", 29 => x"0A", 30 => x"70", 31 => x"A3",
+
+        -- ========================================================================
+        -- ORIGINAL BEQ TEST DATA (commented out, uncomment to switch back)
+        -- See beq.txt for expected outputs
+        -- ========================================================================
+        -- -- Address 0x0: 0x00000005 (value for x1)
+        -- 0 => x"05", 1 => x"00", 2 => x"00", 3 => x"00",
+        -- -- Address 0x4: 0x00000005 (value for x2, same as x1 -> branch taken)
+        -- 4 => x"05", 5 => x"00", 6 => x"00", 7 => x"00",
+        -- -- Address 0x8: 0x00000063 (99 for x3, should be skipped)
+        -- 8 => x"63", 9 => x"00", 10 => x"00", 11 => x"00",
+        -- -- Address 0xC: 0x0000000A (10 for x4)
+        -- 12 => x"0A", 13 => x"00", 14 => x"00", 15 => x"00",
+        -- -- Address 0x10: 0x00000007 (7 for x5, different from x4 -> branch not taken)
+        -- 16 => x"07", 17 => x"00", 18 => x"00", 19 => x"00",
+        -- -- Address 0x14: 0x00000064 (100 for x6)
+        -- 20 => x"64", 21 => x"00", 22 => x"00", 23 => x"00",
+
         OTHERS => (OTHERS => '0')
     );
 
