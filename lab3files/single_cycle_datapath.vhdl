@@ -67,9 +67,9 @@ BEGIN
     -- Branch target adder (PC + immediate offset)
     dp_branch_adder : ENTITY work.adder_32(behavioral)
         PORT MAP(
-            a      => pc,
-            b      => imm_ext,
-            result => branch_target
+            op_a => pc,
+            op_b => imm_ext,
+            sum  => branch_target
         );
 
     -- PC source mux: select between PC+4 and branch target

@@ -50,13 +50,19 @@ ARCHITECTURE rtl OF data_mem IS
 
     TYPE memory_data IS ARRAY (0 TO 1023) OF STD_LOGIC_VECTOR(7 DOWNTO 0);
     SIGNAL RAM : memory_data := (
-        -- Test values (little-endian)
-        -- Address 4: 0x66BEDEAD
-        4 => x"AD", 5 => x"DE", 6 => x"BE", 7 => x"66",
-        -- Address 8: 0x88888888
-        8 => x"88", 9 => x"88", 10 => x"88", 11 => x"88",
-        -- Address 12: 0x12DABEEF
-        12 => x"EF", 13 => x"BE", 14 => x"DA", 15 => x"12",
+        -- BEQ TEST DATA (little-endian)
+        -- Address 0: 0x00000005 (value for x1)
+        0 => x"05", 1 => x"00", 2 => x"00", 3 => x"00",
+        -- Address 4: 0x00000005 (value for x2, same as x1 -> branch taken)
+        4 => x"05", 5 => x"00", 6 => x"00", 7 => x"00",
+        -- Address 8: 0x00000063 (99 for x3, should be skipped)
+        8 => x"63", 9 => x"00", 10 => x"00", 11 => x"00",
+        -- Address 12: 0x0000000A (10 for x4)
+        12 => x"0A", 13 => x"00", 14 => x"00", 15 => x"00",
+        -- Address 16: 0x00000007 (7 for x5, different from x4 -> branch not taken)
+        16 => x"07", 17 => x"00", 18 => x"00", 19 => x"00",
+        -- Address 20: 0x00000064 (100 for x6)
+        20 => x"64", 21 => x"00", 22 => x"00", 23 => x"00",
         OTHERS => (OTHERS => '0')
     );
 
