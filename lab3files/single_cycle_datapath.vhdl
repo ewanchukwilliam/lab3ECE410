@@ -29,7 +29,16 @@ ENTITY lw_sw_datapath IS
         funct3      : OUT STD_LOGIC_VECTOR(2 DOWNTO 0);
         funct7_30      : OUT STD_LOGIC;
         zero_flag   : OUT STD_LOGIC;
-        out_data   : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
+        out_data   : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+
+        -- Debug outputs for testbench visibility
+        debug_pc            : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        debug_instruction   : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        debug_branch_target : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        debug_rs1_data      : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        debug_rs2_data      : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        debug_alu_result    : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
+        debug_imm_ext       : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
     );
 END ENTITY;
 
@@ -155,5 +164,16 @@ BEGIN
             buffer_input => result_mux_o,
             buffer_output=> out_data
         );
+
+------------------------------------------------------------------------
+-- DEBUG OUTPUTS
+------------------------------------------------------------------------
+    debug_pc            <= pc;
+    debug_instruction   <= instruction;
+    debug_branch_target <= branch_target;
+    debug_rs1_data      <= rs1_data;
+    debug_rs2_data      <= rs2_data;
+    debug_alu_result    <= alu_result;
+    debug_imm_ext       <= imm_ext;
 
 END structural;
