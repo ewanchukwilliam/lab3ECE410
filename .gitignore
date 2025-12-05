@@ -33,5 +33,6 @@ xsim.dir/
 # OS files
 .DS_Store
 Thumbs.db
+lab3_part1/
 
 # Keep lab3files/ - everything in this directory will be tracked

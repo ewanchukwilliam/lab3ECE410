@@ -17,19 +17,7 @@ USE IEEE.NUMERIC_STD.ALL;
 ENTITY single_cycle_riscv IS
     PORT (
         clock     : IN STD_LOGIC;
-        out_data : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-
-        -- Debug outputs for testbench visibility
-        debug_pc            : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_instruction   : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_branch_target : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_rs1_data      : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_rs2_data      : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_alu_result    : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_imm_ext       : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
-        debug_pc_src        : OUT STD_LOGIC;
-        debug_zero_flag     : OUT STD_LOGIC;
-        debug_alu_op        : OUT STD_LOGIC_VECTOR(2 DOWNTO 0)
+        out_data : OUT STD_LOGIC_VECTOR(31 DOWNTO 0)
     );
 END ENTITY;
 
@@ -64,14 +52,7 @@ BEGIN
             funct3      => funct3,       -- Signal 2: to controller
             funct7_30   => funct7_30,    -- Signal 3: to controller
             zero_flag   => zero_flag,    -- zero flag to controller
-            out_data    => out_data,
-            debug_pc            => debug_pc,
-            debug_instruction   => debug_instruction,
-            debug_branch_target => debug_branch_target,
-            debug_rs1_data      => debug_rs1_data,
-            debug_rs2_data      => debug_rs2_data,
-            debug_alu_result    => debug_alu_result,
-            debug_imm_ext       => debug_imm_ext
+            out_data    => out_data
         );
 
     control_unit : ENTITY work.controller(behavioral)
@@ -89,10 +70,5 @@ BEGIN
             imm_src     => imm_src,      -- Signal 8: to datapath
             alu_op      => alu_op        -- Signal 12: to datapath
         );
-
-    -- Assign controller debug outputs
-    debug_pc_src    <= pc_src;
-    debug_zero_flag <= zero_flag;
-    debug_alu_op    <= alu_op;
 
 END Structural;
