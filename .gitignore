@@ -1,1 +1,37 @@
-lab3_part1/
+# Xilinx Vivado Project - Ignore all generated/binary files
+# Keep only source files and lab3files directory
+
+# Simulation log and binary files
+*.log
+*.pb
+*.wdb
+*.wcfg
+*.jou
+*.backup*
+*.debug
+*.str
+
+# Xilinx simulation and temp directories
+xsim.dir/
+.Xil/
+
+# Vivado project generated directories
+*.sim/
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+
+# Vivado project file (contains absolute paths)
+*.xpr
+
+# Compiled simulation files
+*.vcd
+*.ghw
+*.fst
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keep lab3files/ - everything in this directory will be tracked
